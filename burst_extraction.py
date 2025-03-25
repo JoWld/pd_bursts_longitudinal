@@ -1,6 +1,6 @@
 
 # script runs beta burst detection from sensorimotor label using a percentile threshold approach
-
+# the output will be a new numpy array of the time series in which all time points that do not "contain" beta bursts are set to zero
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -20,10 +20,12 @@ from mne.io import read_raw_fif
 
 #%% Settings
 usr = 'joswal'
-study = 'parkinson_motor'#'parkinsons_longitudinal'
+study = 'parkinson_motor_2024'#'parkinsons_longitudinal'
 overwrite = True
+# no loop  for hemisphere and session yet!
 hemi = 'lh'
 cond = 'ses1'
+
 lim = 50  # lower duration limit for beta burst, in ms
 percentile = 75 # setting individual amplitude threshold at 75% of the band-pass filtered beta amplitude envelope for each channel and condition
 
@@ -39,17 +41,18 @@ beta_hi = 30
 # %% Paths
 # select study population 
 
-if study == 'parkinson_motor':
-    archive_nr='20055'# '20055' # '20079'
+if study == 'parkinson_motor_2024':
+    archive_nr='21055'# '20055' # '20079'
 else: 
     archive_nr='20079'# for parkinsons_longitudinal
     
-meg_path = '/home/'+usr+'/pd_longi_fu/meg_data' # where the time series data from the sensorimotor region is stored
-subj_data_path = '/home/'+ usr+'/pd_longi_fu/subj_data/' # where the list with sub IDs is stored
+tfr_path = '/archive/'+archive_nr + '_' + study +'/TFR'
+tc_path = '/archive/'+archive_nr + '_' + study +'/TC'
 
 # the following code up to line 72 read in a .csv file containing sub IDs and prepared it to be looped through afterwards
 # I assume you might have some other input here, so change accordingly
-subj_file = op.join(subj_data_path, 'subjects_and_dates_'+study+'.csv')
+subj_data_path = '/home/'+ usr+'/parkinson_motor/subj_data/' # where the list with sub IDs is stored
+subj_file = op.join(subj_data_path, 'pdsubjects_and_dates.csv')
 # load subject list
 with open(subj_file, newline='') as csvfile:
     tmp = csv.reader(csvfile, delimiter=',', quotechar='"')
@@ -83,14 +86,15 @@ subjects_and_dates = [os.path.join('NatMEG_'+s, d) for (s, d) in zip(subjects2, 
 for subj in subjects_and_dates:
     
     subid = subj[-11:-7]
-    subj_path   = op.join(meg_path, subj)
-    fig_path = op.join(subj_path, 'plots/')
-    output_file = subj_path+'/'hemi+'_'+str(percentile)+'_'+str(lim)+'_bbursts_'+ cond+'.csv'
+    subj_path   = op.join(tc_path)
+    #fig_path = op.join(subj_path, 'plots/')
+    out_fname = subj_data_path+'/'+subid+'_bbthres-tc_sensorimotor_'+hemi+'_'+cond
     # loaed sensorimotor label time course 
-    #tcfname = op.join(subj_path, subid+'-tc_sensorimotor_'+hemi+'.npy')
-    tfr_fname = op.join(subj_path, subid+'-tfr_sensorimotor_'+hemi+'.npy')
-    data1 = np.load(tcfname, allow_pickle = True)
-    data1 = np.float64(data1)
+    tc_fname = op.join(tc_path, subid+'_tc_sensorimotor_'+hemi+'_'+cond+'.npy')
+    tfr_fname = op.join(tfr_path, subid+'_tfr_sensorimotor_'+hemi+'_'+cond+'.npy')
+    data1 = np.load(tc_fname, allow_pickle = True)
+    data1 = np.float64(np.squeeze(data1,axis=0))
+    #data1 = np.squeeze(data1,axis=0)
     #data1, times = lab_tc[0], lab_tc[1]
     #   load information about peak beta frequencies, only needed for narrow-band bursts
     #for j in range(0, len(beta_info_f)):
@@ -100,7 +104,7 @@ for subj in subjects_and_dates:
     #        beta_hi = beta_info_f[j][1] + burst_range
     # Resampling
     ###  mne.filter.resample includes filters to avoid aliasing
-   # sfreq = 200
+    sfreq = 200
     #down = sfreq / dwn
     # goal: downsampling to frequency of 333 Hz, i.e. multiply by factor sfreq/1000
     #out1 = mne.filter.resample(data1, down=down, npad='auto', n_jobs=16, pad='reflect_limited',
@@ -121,7 +125,7 @@ for subj in subjects_and_dates:
     #    array1.append(tmp)
 
     # define frequencies of interest
-    #freqs = np.arange(7., 45., 1.)
+    freqs = np.arange(7., 45., 1.)
     #n_cycles = freqs / 2.
 
     #power = mne.time_frequency.tfr_array_morlet(array1, sfreq=sfreq, freqs=freqs,
@@ -137,7 +141,8 @@ for subj in subjects_and_dates:
         tmptmp = np.mean(tmp, axis=0)
         amplitude = np.concatenate((amplitude, tmptmp), axis=None)
     rec_amp = np.absolute(amplitude)  # , /, out=None, *, where=True, casting='same_kind', order='K', dtype=None, subok=True[, signature, extobj])
-    fwhm = sfreq / (5 * down)
+    #fwhm = sfreq / (5 * down)
+    fwhm = sfreq /5
     def fwhm2sigma(fwhm):
         return fwhm / np.sqrt(8 * np.log(2))
     sigma = fwhm2sigma(fwhm)
@@ -165,7 +170,7 @@ for subj in subjects_and_dates:
    # burst_onset = []
    # burst_offset = []
 
-#    burst_info = rle(bin_burst)
+    burst_info = rle(bin_burst)
 #    for l in range(0, len(burst_info[0])):
 #        if burst_info[2][l] > 0:
 #            if burst_info[0][l] >= cutoff:
@@ -187,7 +192,7 @@ for subj in subjects_and_dates:
 #        ibi = np.concatenate((ibi, tmp), axis=None)
 #    ibi = (ibi / sfreq) * 1000
     # binarized & temporally thresholded time series (bursts > lim)
-#    zeros = [0] * len(bin_burst)
+    zeros = [0] * len(bin_burst)
     
 # binarized timeseries, all bursts
     burst_binary_all=[]
@@ -205,9 +210,11 @@ for subj in subjects_and_dates:
         else:
             tmp4=zeros[bonset:bonset+bdur]   
         burst_binary_all=np.concatenate((burst_binary_all,tmp4), axis=None)
+
 # apply this to the time serias data to get a time series were all time points with an amplitude < chosen percentile are set to 0 while those > percentile threshold have their true value
-burst_tc = data1 * burst_binary_all
-# alternatively time_series[binary_data == 0] = 0) 
+burst_tc = data1[:len(burst_binary_all)] * burst_binary_all
+non_zero_indices = np.nonzero(burst_tc)[0]
+
 np.save(out_fname, burst_tc)
  #   tmax = 300
  #   burst_count = len(burst_amp)
